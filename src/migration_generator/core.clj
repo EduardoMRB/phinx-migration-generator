@@ -3,30 +3,37 @@
             [clojure.string :as str]
             [selmer.parser :as selmer]))
 
-(defn get-tables [db]
+(defn get-tables
+  "Retrieves a list containing all tables in the database."
+  [db]
   (j/query db "show tables"))
 
-(defn schema-info [db table]
+(defn column-usage
+  "Gets all the foreign keys declarations for a particular schema and table."
+  [db schema table]
   (j/query db ["select *
                 from INFORMATION_SCHEMA.KEY_COLUMN_USAGE
                 where table_name = ?
                 and referenced_table_name is not null
+                and table_schema = ?
                 and column_name is not null
                 and referenced_column_name is not null
                 and constraint_name <> 'PRIMARY'"
-               table]))
+               table
+               schema]))
 
-(defn has-foreign-keys? [db table]
-  (boolean (seq (schema-info db table))))
-
-(defn tables-info [db tables]
+(defn describe-tables
+  "Retrieves information regarding all the tables passed as argument."
+  [db tables]
   (map (fn [table]
          (conj
           (j/query db (str "describe " table))
           {:type "table" :name table :key ""}))
        tables))
 
-(defn column-type [{:keys [type]}]
+(defn column-type
+  "Translates the MySQL column type to Phinx column type."
+  [{:keys [type]}]
   (cond
     (re-find #"int\(\d+\)" (str type))      "integer"
     (= "datetime" type)                     "datetime"
@@ -48,14 +55,15 @@
   (let [col-type (column-type column)]
     {:name    (:field column)
      :type    col-type
-     :options (if (= "enum" col-type)
-                [["values" (enum-values column)]])}))
+     :options (cond-> [["null" (= "YES" (:null column))]]
+                (= "enum" col-type)                  (conj ["values" (enum-values column)])
+                (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
 (defn camelize-table [table-name]
   (let [parts (str/split table-name #"_")]
     (reduce str (map str/capitalize parts))))
 
-(defn table-data [db table]
+(defn table-data [db schema table]
   (let [pk-entry   (->> table
                         (filter #(= (:key %) "PRI"))
                         first)
@@ -69,7 +77,7 @@
                         (remove #(= table-data %)))
 
         fks        (->> (:name table-data)
-                        (schema-info db)
+                        (column-usage db schema)
                         (map (fn [info]
                                {:col-name            (:column_name info)
                                 :referenced-table    (:referenced_table_name info)
@@ -97,15 +105,11 @@ class Create{{camelized-table}} extends AbstractMigration
 
         $table
         {% for field in fields %}
-            {% if field.options %}
             ->addColumn('{{field.name}}', '{{field.type}}', [
                 {% for option in field.options %}
                 '{{option.0}}' => '{{option.1}}',
                 {% endfor %}
             ])
-            {% else %}
-            ->addColumn('{{field.name}}', '{{field.type}}')
-            {% endif %}
         {% endfor %}
         {% for fk in fks %}
             ->addForeignKey('{{fk.col-name}}', '{{fk.referenced-table}}', '{{fk.referenced-col-name}}')
@@ -130,13 +134,13 @@ class Create{{camelized-table}} extends AbstractMigration
 (defn -main
   "Takes a MySQL database connection configuration and a directory to output
   the Phinx migrations."
-  [host dbname user pass directory & more]
+  [host dbname user pass schema directory & more]
   (let [db {:subprotocol "mysql"
             :subname (str "//" host ":3306/" dbname)
             :user user
             :password pass}
-        tables (map #(table-data db %)
-                    (tables-info db tablenames))]
+        tables (map #(table-data db schema %)
+                    (describe-tables db tablenames))]
     (doseq [table tables]
       (let [fcontent (render-migration-content table)
             fname    (migration-filename (:table-name table))
