@@ -6,7 +6,8 @@
 (defn get-tables
   "Retrieves a list containing all tables in the database."
   [db]
-  (j/query db "show tables"))
+  (map (comp second first)
+       (j/query db "show tables")))
 
 (defn column-usage
   "Gets all the foreign keys declarations for a particular schema and table."
@@ -89,9 +90,15 @@
      :fields (map column-data without-pk)
      :fks fks}))
 
-(defn render-migration-content [table-data]
-  (selmer/render
-   "<?php
+(defn render-migration-content
+  ([table-data]
+   (render-migration-content table-data true))
+  ([table-data generate-fks]
+   (let [table-data (if generate-fks
+                      table-data
+                      (assoc table-data :fks []))]
+     (selmer/render
+      "<?php
 
 use Phinx\\Migration\\AbstractMigration;
 
@@ -117,7 +124,7 @@ class Create{{camelized-table}} extends AbstractMigration
             ->create();
     }
 }"
-   table-data))
+      table-data))))
 
 (defn migration-filename [table-name]
   (let [fmt (java.text.SimpleDateFormat. "yyyyMMddHHmmss")
@@ -128,21 +135,21 @@ class Create{{camelized-table}} extends AbstractMigration
                                                       name-parts)))]
     (str ts "_"  migration-name ".php")))
 
-(def tablenames
-  (str/split (slurp "/home/eduardo/Documentos/dep-ordered.csv") #"\n"))
-
 (defn -main
   "Takes a MySQL database connection configuration and a directory to output
   the Phinx migrations."
-  [host dbname user pass schema directory & more]
-  (let [db {:subprotocol "mysql"
-            :subname (str "//" host ":3306/" dbname)
-            :user user
-            :password pass}
-        tables (map #(table-data db schema %)
-                    (describe-tables db tablenames))]
+  [host dbname user pass schema directory generate-fk & more]
+  (let [db           {:subprotocol "mysql"
+                      :subname (str "//" host ":3306/" dbname)
+                      :user user
+                      :password pass}
+        generate-fks (if (= "true" generate-fk)
+                       true
+                       false)
+        tables       (map #(table-data db schema %)
+                          (describe-tables db (get-tables db)))]
     (doseq [table tables]
-      (let [fcontent (render-migration-content table)
+      (let [fcontent (render-migration-content table generate-fks)
             fname    (migration-filename (:table-name table))
             _        (Thread/sleep 1000) ; We need one second delay so the migration timestamp don't repeat!
             ]
