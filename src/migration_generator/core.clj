@@ -52,11 +52,20 @@
   (apply str (remove #(= \' %)
                      (second (re-matches #"enum\((.*)\)" (str type))))))
 
+(defn- decimal-values [{:keys [type]}]
+  (let [[precision scale] (-> (re-matches #"decimal\((.*)\)" (str type))
+                               (second)
+                               (str/split #","))]
+    {:precision precision
+     :scale scale}))
+
 (defn column-data [column]
   (let [col-type (column-type column)]
     {:name    (:field column)
      :type    col-type
      :options (cond-> [["null" (= "YES" (:null column))]]
+                (= "decimal" col-type)               (conj ["precision" (:precision (decimal-values column))])
+                (= "decimal" col-type)               (conj ["scale" (:scale (decimal-values column))])
                 (= "enum" col-type)                  (conj ["values" (enum-values column)])
                 (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
