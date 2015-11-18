@@ -1,7 +1,8 @@
 (ns migration-generator.core
   (:require [clojure.java.jdbc :as j]
             [clojure.string :as str]
-            [selmer.parser :as selmer]))
+            [selmer.parser :as selmer]
+            [selmer.filters :as filters]))
 
 (defn get-tables
   "Retrieves a list containing all tables in the database."
@@ -99,6 +100,10 @@
      :fields (map column-data without-pk)
      :fks fks}))
 
+;; Adds a custom filter to selmer
+(filters/add-filter! :bool?
+                    (fn [x]
+                      (= (type x) java.lang.Boolean)))
 (defn render-migration-content
   ([table-data]
    (render-migration-content table-data true))
@@ -123,7 +128,11 @@ class Create{{camelized-table}} extends AbstractMigration
         {% for field in fields %}
             ->addColumn('{{field.name}}', '{{field.type}}', [
                 {% for option in field.options %}
+                  {% if option.1|bool? %}
+                '{{option.0}}' => {{option.1}},
+                  {% else %}
                 '{{option.0}}' => '{{option.1}}',
+                  {% endif %}
                 {% endfor %}
             ])
         {% endfor %}

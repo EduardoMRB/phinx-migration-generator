@@ -15,4 +15,4 @@
                         ["scale" "2"]]}
              (column-data column))))))
 
-(run-tests)
+;; (run-tests)
