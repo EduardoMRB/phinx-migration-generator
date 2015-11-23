@@ -64,6 +64,10 @@
   (-> (re-matches #"varchar\((.*)\)" (str type))
       (second)))
 
+(defn- integer-length [{:keys [type]}]
+  (-> (re-matches #"int\((.*)\)" (str type))
+      (second)))
+
 (defn column-data [column]
   (let [col-type (column-type column)]
     {:name    (:field column)
@@ -73,6 +77,7 @@
                 (= "decimal" col-type)               (conj ["scale" (:scale (decimal-values column))])
                 (= "enum" col-type)                  (conj ["values" (enum-values column)])
                 (= "string" col-type)                (conj ["length" (string-length column)])
+                (= "integer" col-type)               (conj ["length" (integer-length column)])
                 (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
 (defn camelize-table [table-name]
