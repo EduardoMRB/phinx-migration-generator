@@ -13,6 +13,14 @@
               :options [["null" false]
                         ["precision" "14"]
                         ["scale" "2"]]}
+             (column-data column)))))
+  (testing "Support for varchar length"
+    (let [column {:field "test_varchar"
+                  :type "varchar(300)"
+                  :null "NO"
+                  :default nil}]
+      (is (= {:name "test_varchar"
+              :type "string"
+              :options [["null" false]
+                        ["length" "300"]]}
              (column-data column))))))
-
-;; (run-tests)

@@ -55,10 +55,14 @@
 
 (defn- decimal-values [{:keys [type]}]
   (let [[precision scale] (-> (re-matches #"decimal\((.*)\)" (str type))
-                               (second)
-                               (str/split #","))]
+                              (second)
+                              (str/split #","))]
     {:precision precision
      :scale scale}))
+
+(defn- string-length [{:keys [type]}]
+  (-> (re-matches #"varchar\((.*)\)" (str type))
+      (second)))
 
 (defn column-data [column]
   (let [col-type (column-type column)]
@@ -68,6 +72,7 @@
                 (= "decimal" col-type)               (conj ["precision" (:precision (decimal-values column))])
                 (= "decimal" col-type)               (conj ["scale" (:scale (decimal-values column))])
                 (= "enum" col-type)                  (conj ["values" (enum-values column)])
+                (= "string" col-type)                (conj ["length" (string-length column)])
                 (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
 (defn camelize-table [table-name]
