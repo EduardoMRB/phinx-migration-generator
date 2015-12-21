@@ -25,7 +25,7 @@
                         ["length" "300"]]}
              (column-data column)))))
   (testing "Support for integer length"
-    (let [column {:field    "test_field"
+    (let [column {:field   "test_field"
                   :type    "int(50)"
                   :null    "NO"
                   :default nil}]
@@ -33,4 +33,23 @@
               :type    "integer"
               :options [["null" false]
                         ["length" "50"]]}
+             (column-data column)))))
+  (testing "Tinyint columns are converted to boolean type"
+    (let [column {:field   "test_field"
+                  :type    "tinyint(1)"
+                  :null    "YES"
+                  :default nil}]
+      (is (= {:name    "test_field"
+              :type    "boolean"
+              :options [["null" true]]}
+             (column-data column)))))
+  (testing "Support for longtext columns"
+    (let [column {:field   "test_field"
+                  :type    "longtext"
+                  :null    "NO"
+                  :default nil}]
+      (is (= {:name    "test_field"
+              :type    "text"
+              :options [["null" false]
+                        ["limit" "LONGTEXT"]]}
              (column-data column))))))

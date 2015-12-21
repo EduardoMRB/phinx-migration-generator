@@ -37,14 +37,14 @@
   "Translates the MySQL column type to Phinx column type."
   [{:keys [type]}]
   (cond
+    (re-find #"tinyint\(\d+\)" (str type))  "boolean"
     (re-find #"int\(\d+\)" (str type))      "integer"
     (= "datetime" type)                     "datetime"
     (= "date" type)                         "date"
     (re-find #"varchar\(\d+\)" (str type))  "string"
-    (= "longtext" type)                     "text"
+    (= "longtext" type)                     "longtext"
     (re-find #"enum(.*)" (str type))        "enum"
     (re-find #"char\(\d+\)" (str type))     "string"
-    (re-find #"tinyint\(\d+\)" (str type))  "integer"
     (re-find #"float\((.*)\)" (str type))   "float"
     (re-find #"decimal\((.*)\)" (str type)) "decimal"
     :else                                   (str type)))
@@ -71,13 +71,14 @@
 (defn column-data [column]
   (let [col-type (column-type column)]
     {:name    (:field column)
-     :type    col-type
+     :type    (if (= col-type "longtext") "text" col-type)
      :options (cond-> [["null" (= "YES" (:null column))]]
                 (= "decimal" col-type)               (conj ["precision" (:precision (decimal-values column))])
                 (= "decimal" col-type)               (conj ["scale" (:scale (decimal-values column))])
                 (= "enum" col-type)                  (conj ["values" (enum-values column)])
                 (= "string" col-type)                (conj ["length" (string-length column)])
                 (= "integer" col-type)               (conj ["length" (integer-length column)])
+                (= "longtext" col-type)              (conj ["limit" "LONGTEXT"])
                 (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
 (defn camelize-table [table-name]
@@ -104,11 +105,11 @@
                                 :referenced-table    (:referenced_table_name info)
                                 :referenced-col-name (:referenced_column_name info)})))
         ]
-    {:pk (:name (column-data pk-entry))
+    {:pk              (:name (column-data pk-entry))
      :camelized-table (camelize-table (:name table-data))
-     :table-name (:name table-data)
-     :fields (map column-data without-pk)
-     :fks fks}))
+     :table-name      (:name table-data)
+     :fields          (map column-data without-pk)
+     :fks             fks}))
 
 ;; Adds a custom filter to selmer
 (filters/add-filter! :bool?
