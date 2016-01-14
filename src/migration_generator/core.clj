@@ -4,6 +4,8 @@
             [selmer.parser :as selmer]
             [selmer.filters :as filters]))
 
+(def TEXT_LONG 4294967295)
+
 (defn get-tables
   "Retrieves a list containing all tables in the database."
   [db]
@@ -37,17 +39,19 @@
   "Translates the MySQL column type to Phinx column type."
   [{:keys [type]}]
   (cond
-    (re-find #"tinyint\(\d+\)" (str type))  "boolean"
-    (re-find #"int\(\d+\)" (str type))      "integer"
-    (= "datetime" type)                     "datetime"
-    (= "date" type)                         "date"
-    (re-find #"varchar\(\d+\)" (str type))  "string"
-    (= "longtext" type)                     "longtext"
-    (re-find #"enum(.*)" (str type))        "enum"
-    (re-find #"char\(\d+\)" (str type))     "string"
-    (re-find #"float\((.*)\)" (str type))   "float"
-    (re-find #"decimal\((.*)\)" (str type)) "decimal"
-    :else                                   (str type)))
+    (re-find #"tinyint\([2-9][0-9]*\)" (str type)) "integer"
+    (re-find #"tinyint\(\d+\)" (str type))         "boolean"
+    (re-find #"int\(\d+\)" (str type))             "integer"
+    (= "datetime" type)                            "datetime"
+    (= "date" type)                                "date"
+    (re-find #"varchar\(\d+\)" (str type))         "string"
+    (= "longtext" type)                            "longtext"
+    (re-find #"enum(.*)" (str type))               "enum"
+    (re-find #"char\(\d+\)" (str type))            "string"
+    (re-find #"float\((.*)\)" (str type))          "float"
+    (re-find #"decimal\((.*)\)" (str type))        "decimal"
+    (re-find #"year" (str type))                   "integer"
+    :else                                          (str type)))
 
 (defn enum-values [{:keys [type]}]
   (apply str (remove #(= \' %)
@@ -65,8 +69,8 @@
       (second)))
 
 (defn- integer-length [{:keys [type]}]
-  (-> (re-matches #"int\((.*)\)" (str type))
-      (second)))
+  (-> (re-matches #"(int|year|tinyint)\((.*)\)" (str type))
+      (get 2)))
 
 (defn column-data [column]
   (let [col-type (column-type column)]
@@ -78,7 +82,7 @@
                 (= "enum" col-type)                  (conj ["values" (enum-values column)])
                 (= "string" col-type)                (conj ["length" (string-length column)])
                 (= "integer" col-type)               (conj ["length" (integer-length column)])
-                (= "longtext" col-type)              (conj ["limit" "LONGTEXT"])
+                (= "longtext" col-type)              (conj ["limit" TEXT_LONG])
                 (not (str/blank? (:default column))) (conj ["default" (:default column)]))}))
 
 (defn camelize-table [table-name]
@@ -131,9 +135,15 @@ class Create{{camelized-table}} extends AbstractMigration
 {
     public function change()
     {
+        {% if pk %}
         $table = $this->table('{{table-name}}', [
             'id' => '{{pk}}',
         ]);
+        {% else %}
+        $table = $this->table('{{table-name}}', [
+            'id' => false,
+        ]);
+        {% endif %}
 
         $table
         {% for field in fields %}
@@ -155,10 +165,12 @@ class Create{{camelized-table}} extends AbstractMigration
 }"
       table-data))))
 
-(defn migration-filename [table-name]
-  (let [fmt (java.text.SimpleDateFormat. "yyyyMMddHHmmss")
-        ts  (.format fmt (java.util.Date.))
-        name-parts (str/split table-name #"_")
+(defn migration-filename
+  "Filename according to the table name and the timestamp
+
+  (migration-filename \"web_view\" 20151111201002) => \"20151111201002_create_web_view.php\""
+  [table-name ts]
+  (let [name-parts     (str/split table-name #"_")
         migration-name (str/join "_" (cons "create" (if (= (first name-parts) "")
                                                       (rest name-parts)
                                                       name-parts)))]
@@ -177,12 +189,16 @@ class Create{{camelized-table}} extends AbstractMigration
                        false)
         tables       (map #(table-data db schema %)
                           (describe-tables db (get-tables db)))]
-    (doseq [table tables]
-      (let [fcontent (render-migration-content table generate-fks)
-            fname    (migration-filename (:table-name table))
-            _        (Thread/sleep 1000) ; We need one second delay so the migration timestamp don't repeat!
-            ]
-        (println "Creating migration: " fname)
-        (spit (str directory "/" fname) fcontent)
-        (println "Created!")))
+    (loop [ts (BigInteger. (.format (java.text.SimpleDateFormat. "yyyMMddHHmmss")
+                                    (java.util.Date.)))
+           tables tables]
+      (when (seq tables)
+        (let [table (first tables)
+              fcontent (render-migration-content table generate-fks)
+              fname (migration-filename (:table-name table) ts)]
+          (println "Creating migration: " fname)
+          (spit (str directory "/" fname) fcontent)
+          (println "Created!")
+          (recur (inc ts)
+                 (rest tables)))))
     (println "Done!")))

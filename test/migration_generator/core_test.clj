@@ -43,6 +43,17 @@
               :type    "boolean"
               :options [["null" true]]}
              (column-data column)))))
+  (testing "Tinyints larger than 1 are converted to integers"
+    (let [column {:field   "test_field"
+                  :type    "tinyint(3)"
+                  :null    "YES"
+                  :default nil}]
+      (is (= {:name    "test_field"
+              :type    "integer"
+              :options [["null" true]
+                        ["length" "3"]]}
+             (column-data column))))
+    )
   (testing "Support for longtext columns"
     (let [column {:field   "test_field"
                   :type    "longtext"
@@ -51,5 +62,15 @@
       (is (= {:name    "test_field"
               :type    "text"
               :options [["null" false]
-                        ["limit" "LONGTEXT"]]}
+                        ["limit" 4294967295]]}
+             (column-data column)))))
+  (testing "Support for year fields"
+    (let [column {:field "idade"
+                  :type "year(4)"
+                  :null "NO"
+                  :default nil}]
+      (is (= {:name "idade"
+              :type "integer"
+              :options [["null" false]
+                        ["length" "4"]]}
              (column-data column))))))
