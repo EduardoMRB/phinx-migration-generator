@@ -1,8 +1,7 @@
 (ns migration-generator.core
   (:require [clojure.java.jdbc :as j]
             [clojure.string :as str]
-            [selmer.parser :as selmer]
-            [selmer.filters :as filters]))
+            [migration-generator.renderer :as renderer]))
 
 (def TEXT_LONG 4294967295)
 
@@ -114,56 +113,6 @@
      :table-name      (:name table-data)
      :fields          (map column-data without-pk)
      :fks             fks}))
-
-;; Adds a custom filter to selmer
-(filters/add-filter! :bool?
-                    (fn [x]
-                      (= (type x) java.lang.Boolean)))
-(defn render-migration-content
-  ([table-data]
-   (render-migration-content table-data true))
-  ([table-data generate-fks]
-   (let [table-data (if generate-fks
-                      table-data
-                      (assoc table-data :fks []))]
-     (selmer/render
-      "<?php
-
-use Phinx\\Migration\\AbstractMigration;
-
-class Create{{camelized-table}} extends AbstractMigration
-{
-    public function change()
-    {
-        {% if pk %}
-        $table = $this->table('{{table-name}}', [
-            'id' => '{{pk}}',
-        ]);
-        {% else %}
-        $table = $this->table('{{table-name}}', [
-            'id' => false,
-        ]);
-        {% endif %}
-
-        $table
-        {% for field in fields %}
-            ->addColumn('{{field.name}}', '{{field.type}}', [
-                {% for option in field.options %}
-                  {% if option.1|bool? %}
-                '{{option.0}}' => {{option.1}},
-                  {% else %}
-                '{{option.0}}' => '{{option.1}}',
-                  {% endif %}
-                {% endfor %}
-            ])
-        {% endfor %}
-        {% for fk in fks %}
-            ->addForeignKey('{{fk.col-name}}', '{{fk.referenced-table}}', '{{fk.referenced-col-name}}')
-        {% endfor %}
-            ->create();
-    }
-}"
-      table-data))))
 
 (defn migration-filename
   "Filename according to the table name and the timestamp

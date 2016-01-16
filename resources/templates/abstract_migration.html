@@ -1,0 +1,36 @@
+<?php
+
+use Phinx\Migration\AbstractMigration;
+
+class Create{{camelized-table}} extends AbstractMigration
+{
+    public function change()
+    {
+        {% if pk %}
+        $table = $this->table('{{table-name}}', [
+            'id' => '{{pk}}',
+        ]);
+        {% else %}
+        $table = $this->table('{{table-name}}', [
+            'id' => false,
+        ]);
+        {% endif %}
+
+        $table
+        {% for field in fields %}
+            ->addColumn('{{field.name}}', '{{field.type}}', [
+                {% for option in field.options %}
+                  {% if option.1|bool? %}
+                '{{option.0}}' => {{option.1}},
+                  {% else %}
+                '{{option.0}}' => '{{option.1}}',
+                  {% endif %}
+                {% endfor %}
+            ])
+        {% endfor %}
+        {% for fk in fks %}
+            ->addForeignKey('{{fk.col-name}}', '{{fk.referenced-table}}', '{{fk.referenced-col-name}}')
+        {% endfor %}
+            ->create();
+    }
+}
